@@ -15,14 +15,19 @@ function Dashboard() {
     const storedUser = localStorage.getItem('user');
     const token = localStorage.getItem('token');
 
-    if (!token || !storedUser) {
+    if (!storedUser) {
       navigate('/login');
       return;
     }
 
-    setUser(JSON.parse(storedUser));
+    try {
+      const parsedUser = JSON.parse(storedUser);
+      setUser(parsedUser);
+    } catch (e) {
+      console.error("Error parsing user context", e);
+    }
 
-    // Socket.io Client Connection to Live Render Backend
+    // Socket.io Connection
     const newSocket = io(API_BASE_URL, {
       transports: ['websocket', 'polling']
     });
@@ -40,7 +45,7 @@ function Dashboard() {
     e.preventDefault();
     if (newMessage.trim() && socket) {
       const messageData = {
-        sender: user?.username || 'Anonymous',
+        sender: user?.username || user?.name || 'User',
         text: newMessage,
         timestamp: new Date().toLocaleTimeString()
       };
@@ -54,19 +59,23 @@ function Dashboard() {
     navigate('/login');
   };
 
+  const usernameToDisplay = user?.username || user?.name || user?.email || 'User';
+
   return (
-    <div style={{ maxWidth: '800px', margin: '30px auto', padding: '20px', border: '1px solid #ccc', borderRadius: '8px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h2>HubVibe Live Community</h2>
-        {user && <span>Welcome, <strong>{user.username}</strong>!</span>}
-        <button onClick={handleLogout} style={{ padding: '8px 15px', backgroundColor: '#dc3545', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-          Logout
-        </button>
+    <div style={{ maxWidth: '700px', margin: '30px auto', padding: '20px', border: '1px solid #ccc', borderRadius: '8px', backgroundColor: '#fff', color: '#333' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
+        <h2 style={{ margin: 0 }}>HubVibe Live Community</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+          <span style={{ fontSize: '15px' }}>Welcome, <strong>{usernameToDisplay}</strong>!</span>
+          <button onClick={handleLogout} style={{ padding: '8px 15px', backgroundColor: '#dc3545', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+            Logout
+          </button>
+        </div>
       </div>
 
-      <div style={{ border: '1px solid #ddd', height: '350px', overflowY: 'scroll', padding: '15px', marginBottom: '15px', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
+      <div style={{ border: '1px solid #ddd', height: '320px', overflowY: 'scroll', padding: '15px', marginBottom: '15px', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
         {messages.length === 0 ? (
-          <p style={{ color: '#888' }}>No messages yet. Say hi to the community!</p>
+          <p style={{ color: '#888', textAlign: 'center', marginTop: '120px' }}>No messages yet. Say hi to the community!</p>
         ) : (
           messages.map((msg, index) => (
             <div key={index} style={{ marginBottom: '10px' }}>

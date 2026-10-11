@@ -14,8 +14,12 @@ function Login() {
     e.preventDefault();
     try {
       const res = await axios.post(`${API_BASE_URL}/api/auth/login`, { email, password });
-      localStorage.setItem('token', res.data.token);
-      localStorage.setItem('user', JSON.stringify(res.data.user));
+      
+      // Token and User data saving safely
+      localStorage.setItem('token', res.data.token || res.data.jwt);
+      const userData = res.data.user || { username: res.data.username || email.split('@')[0] };
+      localStorage.setItem('user', JSON.stringify(userData));
+
       navigate('/dashboard');
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed. Please check your credentials.');
