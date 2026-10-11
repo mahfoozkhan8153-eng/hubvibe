@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import io from 'socket.io-client';
-import axios from 'axios';
 
 const API_BASE_URL = 'https://hubvibe-backend.onrender.com';
 
@@ -13,10 +12,9 @@ function Dashboard() {
   const [socket, setSocket] = useState(null);
   const [activeCommunity, setActiveCommunity] = useState('SaaS Developers');
   
-  // Post management state
   const [posts, setPosts] = useState([
-    { id: 1, author: 'Savant', content: 'Welcome to HubVibe community! Excited to collaborate.', community: 'SaaS Developers', likes: 3 },
-    { id: 2, author: 'Ayushi', content: 'Looking for full-stack developers for a MERN project.', community: 'Digital Nomads', likes: 5 }
+    { id: 1, author: 'Savant', content: 'Welcome to HubVibe community! Excited to collaborate.', community: 'SaaS Developers' },
+    { id: 2, author: 'Ayushi', content: 'Looking for full-stack developers for a MERN project.', community: 'Digital Nomads' }
   ]);
   const [newPost, setNewPost] = useState('');
 
@@ -38,7 +36,6 @@ function Dashboard() {
       console.error("Error parsing user context", e);
     }
 
-    // Socket.io connection
     const newSocket = io(API_BASE_URL, {
       transports: ['websocket', 'polling']
     });
@@ -70,29 +67,22 @@ function Dashboard() {
     e.preventDefault();
     if (!newPost.trim()) return;
 
-    // Free members can post to public communities
     const createdPost = {
       id: Date.now(),
       author: user?.username || 'User',
       content: newPost,
-      community: activeCommunity,
-      likes: 0
+      community: activeCommunity
     };
 
     setPosts([createdPost, ...posts]);
     setNewPost('');
   };
 
-  const handleUpgradeToPro = async () => {
-    try {
-      // Simulate backend PRO role upgrade
-      const updatedUser = { ...user, role: 'ProMember', isPro: true };
-      setUser(updatedUser);
-      localStorage.setItem('user', JSON.stringify(updatedUser));
-      alert('🎉 Membership Upgraded! You are now a Pro Member with access to Job Board and Pro Communities.');
-    } catch (err) {
-      alert('Upgrade failed. Try again.');
-    }
+  const handleUpgradeToPro = () => {
+    const updatedUser = { ...user, role: 'ProMember', isPro: true };
+    setUser(updatedUser);
+    localStorage.setItem('user', JSON.stringify(updatedUser));
+    alert('🎉 Membership Upgraded! You are now a Pro Member with access to Job Board.');
   };
 
   const handleLogout = () => {
@@ -125,7 +115,7 @@ function Dashboard() {
         </div>
       </div>
 
-      {/* Main Container */}
+      {/* Main Grid Layout */}
       <div style={{ display: 'flex', gap: '20px', marginTop: '20px' }}>
         {/* Sidebar */}
         <div style={{ width: '240px', backgroundColor: '#f8fafc', padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
@@ -231,7 +221,7 @@ function Dashboard() {
             </div>
           )}
 
-          {/* TAB 3: JOB BOARD (PRO FEATURE) */}
+          {/* TAB 3: JOB BOARD */}
           {activeTab === 'jobs' && (
             <div>
               <h4>Collaboration & Job Matches</h4>
