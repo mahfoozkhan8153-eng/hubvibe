@@ -18,7 +18,7 @@ const Dashboard = () => {
   const [chatRoom, setChatRoom] = useState('SaaS Developers');
   const [message, setMessage] = useState('');
   
-  // SEPARATE STORES: Kept strictly isolated
+  // COMPLETELY SEPARATED STORES
   const [communityPosts, setCommunityPosts] = useState({});
   const [liveChatMessages, setLiveChatMessages] = useState({});
 
@@ -48,7 +48,6 @@ const Dashboard = () => {
     }
   }, [navigate]);
 
-  // Join dedicated socket rooms
   useEffect(() => {
     if (selectedCommunity) {
       socket.emit('join_room', `community_${selectedCommunity}`);
@@ -58,11 +57,13 @@ const Dashboard = () => {
     }
 
     const handleReceiveMessage = (data) => {
-      if (!data || !data.room) return;
+      if (!data) return;
 
-      // STRICT FILTERING: Community Board Messages
-      if (data.room.startsWith('community_')) {
-        const roomName = data.room.replace('community_', '');
+      // STRICT TYPE FILTERING (Isolate Community vs Live Chat)
+      if (data.msgType === 'community' || (data.room && data.room.startsWith('community_'))) {
+        const roomName = data.room ? data.room.replace('community_', '') : selectedCommunity;
+        if (!roomName) return;
+
         setCommunityPosts((prev) => {
           const roomMsgs = prev[roomName] || [];
           const isDuplicate = roomMsgs.some(
@@ -71,10 +72,10 @@ const Dashboard = () => {
           if (isDuplicate) return prev;
           return { ...prev, [roomName]: [...roomMsgs, data] };
         });
-      } 
-      // STRICT FILTERING: Live Tribe Chat Messages
-      else if (data.room.startsWith('live_')) {
-        const roomName = data.room.replace('live_', '');
+      } else if (data.msgType === 'live' || (data.room && data.room.startsWith('live_'))) {
+        const roomName = data.room ? data.room.replace('live_', '') : chatRoom;
+        if (!roomName) return;
+
         setLiveChatMessages((prev) => {
           const roomMsgs = prev[roomName] || [];
           const isDuplicate = roomMsgs.some(
@@ -103,12 +104,12 @@ const Dashboard = () => {
       const socketRoomKey = `live_${chatRoom}`;
       const messageData = {
         room: socketRoomKey,
+        msgType: 'live', // Strict Type Identifier
         sender: user.name || 'Member',
         text: message.trim(),
         time: timeString
       };
 
-      // Update ONLY liveChatMessages
       setLiveChatMessages((prev) => {
         const roomMsgs = prev[chatRoom] || [];
         return { ...prev, [chatRoom]: [...roomMsgs, messageData] };
@@ -121,12 +122,12 @@ const Dashboard = () => {
       const socketRoomKey = `community_${selectedCommunity}`;
       const messageData = {
         room: socketRoomKey,
+        msgType: 'community', // Strict Type Identifier
         sender: user.name || 'Member',
         text: message.trim(),
         time: timeString
       };
 
-      // Update ONLY communityPosts
       setCommunityPosts((prev) => {
         const roomMsgs = prev[selectedCommunity] || [];
         return { ...prev, [selectedCommunity]: [...roomMsgs, messageData] };
