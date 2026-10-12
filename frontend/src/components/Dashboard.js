@@ -3,8 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import io from 'socket.io-client';
 
 const API_BASE_URL = 'https://hubvibe-backend.onrender.com';
+
 const socket = io(API_BASE_URL, {
-  transports: ['websocket', 'polling']
+  transports: ['websocket', 'polling'],
+  autoConnect: true
 });
 
 const Dashboard = () => {
@@ -16,8 +18,8 @@ const Dashboard = () => {
   const [chatRoom, setChatRoom] = useState('SaaS Developers');
   const [message, setMessage] = useState('');
   
-  const [communityPosts, setCommunityPosts] = useState({});
-  const [liveChatMessages, setLiveChatMessages] = useState({});
+  // Shared state between Community Board and Live Chat Rooms
+  const [roomMessages, setRoomMessages] = useState({});
 
   const [jobs, setJobs] = useState([
     { id: 1, title: 'Full Stack MERN Developer', budget: '$1,500/mo', desc: 'Looking for a remote engineer to scale our SaaS product.' },
@@ -46,33 +48,22 @@ const Dashboard = () => {
   }, [navigate]);
 
   useEffect(() => {
-    if (selectedCommunity) {
-      socket.emit('join_room', `community_${selectedCommunity}`);
-    }
-    if (chatRoom) {
-      socket.emit('join_room', `live_${chatRoom}`);
+    // Determine active room (unified prefix to keep board & chat synced)
+    const currentRoom = selectedCommunity || chatRoom;
+    if (currentRoom) {
+      socket.emit('join_room', currentRoom);
     }
 
     const handleReceiveMessage = (data) => {
-      if (data.room && data.room.startsWith('community_')) {
-        const roomName = data.room.replace('community_', '');
-        setCommunityPosts((prev) => {
-          const roomMsgs = prev[roomName] || [];
-          const lastMsg = roomMsgs[roomMsgs.length - 1];
-          if (lastMsg && lastMsg.text === data.text && lastMsg.sender === data.sender && lastMsg.time === data.time) {
-            return prev;
-          }
-          return { ...prev, [roomName]: [...roomMsgs, data] };
-        });
-      } else if (data.room && data.room.startsWith('live_')) {
-        const roomName = data.room.replace('live_', '');
-        setLiveChatMessages((prev) => {
-          const roomMsgs = prev[roomName] || [];
-          const lastMsg = roomMsgs[roomMsgs.length - 1];
-          if (lastMsg && lastMsg.text === data.text && lastMsg.sender === data.sender && lastMsg.time === data.time) {
-            return prev;
-          }
-          return { ...prev, [roomName]: [...roomMsgs, data] };
+      if (data.room) {
+        setRoomMessages((prev) => {
+          const existing = prev[data.room] || [];
+          // Avoid duplicate appends
+          const isDuplicate = existing.some(
+            (m) => m.sender === data.sender && m.text === data.text && m.time === data.time
+          );
+          if (isDuplicate) return prev;
+          return { ...prev, [data.room]: [...existing, data] };
         });
       }
     };
@@ -84,46 +75,30 @@ const Dashboard = () => {
     };
   }, [selectedCommunity, chatRoom]);
 
-  const handleSendMessage = (e, isLiveTab = false) => {
+  const handleSendMessage = (e) => {
     e.preventDefault();
     if (!message.trim()) return;
 
+    const targetRoom = selectedCommunity || chatRoom;
+    if (!targetRoom) return;
+
     const timeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-    if (isLiveTab) {
-      const socketRoomKey = `live_${chatRoom}`;
-      const messageData = {
-        room: socketRoomKey,
-        sender: user.name,
-        text: message.trim(),
-        time: timeString
-      };
+    const messageData = {
+      room: targetRoom,
+      sender: user.name || 'Member',
+      text: message.trim(),
+      time: timeString
+    };
 
-      setLiveChatMessages((prev) => {
-        const roomMsgs = prev[chatRoom] || [];
-        return { ...prev, [chatRoom]: [...roomMsgs, messageData] };
-      });
+    // Optimistic local UI update
+    setRoomMessages((prev) => {
+      const existing = prev[targetRoom] || [];
+      return { ...prev, [targetRoom]: [...existing, messageData] };
+    });
 
-      socket.emit('send_message', messageData);
-      setMessage('');
-    } else {
-      if (!selectedCommunity) return;
-      const socketRoomKey = `community_${selectedCommunity}`;
-      const messageData = {
-        room: socketRoomKey,
-        sender: user.name,
-        text: message.trim(),
-        time: timeString
-      };
-
-      setCommunityPosts((prev) => {
-        const roomMsgs = prev[selectedCommunity] || [];
-        return { ...prev, [selectedCommunity]: [...roomMsgs, messageData] };
-      });
-
-      socket.emit('send_message', messageData);
-      setMessage('');
-    }
+    socket.emit('send_message', messageData);
+    setMessage('');
   };
 
   const handlePostJob = (e) => {
@@ -177,6 +152,9 @@ const Dashboard = () => {
     localStorage.removeItem('hubvibe_user');
     navigate('/login');
   };
+
+  const activeRoomName = selectedCommunity || chatRoom;
+  const currentMessages = roomMessages[activeRoomName] || [];
 
   return (
     <div style={styles.container}>
@@ -267,12 +245,12 @@ const Dashboard = () => {
               </div>
 
               <div style={styles.chatBox}>
-                {(!communityPosts[selectedCommunity] || communityPosts[selectedCommunity].length === 0) ? (
+                {currentMessages.length === 0 ? (
                   <div style={{ textAlign: 'center', color: '#a7f3d0', opacity: 0.6, marginTop: '40px' }}>
                     No community posts yet in #{selectedCommunity}. Start the discussion below!
                   </div>
                 ) : (
-                  communityPosts[selectedCommunity].map((post, idx) => (
+                  currentMessages.map((post, idx) => (
                     <div key={idx} style={{ marginBottom: '12px', background: 'rgba(2,44,34,0.4)', padding: '10px 14px', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.15)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                         <span style={{ fontWeight: 'bold', color: '#34d399', fontSize: '13px' }}>{post.sender}</span>
@@ -284,7 +262,7 @@ const Dashboard = () => {
                 )}
               </div>
 
-              <form onSubmit={(e) => handleSendMessage(e, false)} style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
+              <form onSubmit={handleSendMessage} style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
                 <input
                   type="text"
                   value={message}
@@ -356,12 +334,12 @@ const Dashboard = () => {
                   </div>
 
                   <div style={styles.chatBox}>
-                    {(!liveChatMessages[chatRoom] || liveChatMessages[chatRoom].length === 0) ? (
+                    {currentMessages.length === 0 ? (
                       <div style={{ textAlign: 'center', color: '#a7f3d0', opacity: 0.6, marginTop: '40px' }}>
                         No live messages in #{chatRoom} yet. Start chatting below!
                       </div>
                     ) : (
-                      liveChatMessages[chatRoom].map((post, idx) => (
+                      currentMessages.map((post, idx) => (
                         <div key={idx} style={{ marginBottom: '12px', background: 'rgba(2,44,34,0.4)', padding: '10px 14px', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.15)' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                             <span style={{ fontWeight: 'bold', color: '#34d399', fontSize: '13px' }}>{post.sender}</span>
@@ -373,7 +351,7 @@ const Dashboard = () => {
                     )}
                   </div>
 
-                  <form onSubmit={(e) => handleSendMessage(e, true)} style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
+                  <form onSubmit={handleSendMessage} style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
                     <input
                       type="text"
                       value={message}
@@ -707,7 +685,7 @@ const styles = {
     borderRadius: '12px',
     border: '1px solid rgba(16,185,129,0.2)',
   },
-    jobItem: {
+  jobItem: {
     padding: '12px',
     background: 'rgba(6,78,59,0.6)',
     borderRadius: '10px',
