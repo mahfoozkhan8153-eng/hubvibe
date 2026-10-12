@@ -18,8 +18,9 @@ const Dashboard = () => {
   const [chatRoom, setChatRoom] = useState('SaaS Developers');
   const [message, setMessage] = useState('');
   
-  // Shared state between Community Board and Live Chat Rooms
-  const [roomMessages, setRoomMessages] = useState({});
+  // Separated state stores for Community Boards and Live Chat Rooms
+  const [communityPosts, setCommunityPosts] = useState({});
+  const [liveChatMessages, setLiveChatMessages] = useState({});
 
   const [jobs, setJobs] = useState([
     { id: 1, title: 'Full Stack MERN Developer', budget: '$1,500/mo', desc: 'Looking for a remote engineer to scale our SaaS product.' },
@@ -47,23 +48,35 @@ const Dashboard = () => {
     }
   }, [navigate]);
 
+  // Join respective socket rooms depending on active tab/view
   useEffect(() => {
-    // Determine active room (unified prefix to keep board & chat synced)
-    const currentRoom = selectedCommunity || chatRoom;
-    if (currentRoom) {
-      socket.emit('join_room', currentRoom);
+    if (selectedCommunity) {
+      socket.emit('join_room', `community_${selectedCommunity}`);
+    }
+    if (activeTab === 'chat' && chatRoom) {
+      socket.emit('join_room', `live_${chatRoom}`);
     }
 
     const handleReceiveMessage = (data) => {
-      if (data.room) {
-        setRoomMessages((prev) => {
-          const existing = prev[data.room] || [];
-          // Avoid duplicate appends
-          const isDuplicate = existing.some(
+      if (data.room && data.room.startsWith('community_')) {
+        const roomName = data.room.replace('community_', '');
+        setCommunityPosts((prev) => {
+          const roomMsgs = prev[roomName] || [];
+          const isDuplicate = roomMsgs.some(
             (m) => m.sender === data.sender && m.text === data.text && m.time === data.time
           );
           if (isDuplicate) return prev;
-          return { ...prev, [data.room]: [...existing, data] };
+          return { ...prev, [roomName]: [...roomMsgs, data] };
+        });
+      } else if (data.room && data.room.startsWith('live_')) {
+        const roomName = data.room.replace('live_', '');
+        setLiveChatMessages((prev) => {
+          const roomMsgs = prev[roomName] || [];
+          const isDuplicate = roomMsgs.some(
+            (m) => m.sender === data.sender && m.text === data.text && m.time === data.time
+          );
+          if (isDuplicate) return prev;
+          return { ...prev, [roomName]: [...roomMsgs, data] };
         });
       }
     };
@@ -73,32 +86,48 @@ const Dashboard = () => {
     return () => {
       socket.off('receive_message', handleReceiveMessage);
     };
-  }, [selectedCommunity, chatRoom]);
+  }, [selectedCommunity, chatRoom, activeTab]);
 
-  const handleSendMessage = (e) => {
+  const handleSendMessage = (e, isLiveTab = false) => {
     e.preventDefault();
     if (!message.trim()) return;
 
-    const targetRoom = selectedCommunity || chatRoom;
-    if (!targetRoom) return;
-
     const timeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-    const messageData = {
-      room: targetRoom,
-      sender: user.name || 'Member',
-      text: message.trim(),
-      time: timeString
-    };
+    if (isLiveTab) {
+      const socketRoomKey = `live_${chatRoom}`;
+      const messageData = {
+        room: socketRoomKey,
+        sender: user.name || 'Member',
+        text: message.trim(),
+        time: timeString
+      };
 
-    // Optimistic local UI update
-    setRoomMessages((prev) => {
-      const existing = prev[targetRoom] || [];
-      return { ...prev, [targetRoom]: [...existing, messageData] };
-    });
+      setLiveChatMessages((prev) => {
+        const roomMsgs = prev[chatRoom] || [];
+        return { ...prev, [chatRoom]: [...roomMsgs, messageData] };
+      });
 
-    socket.emit('send_message', messageData);
-    setMessage('');
+      socket.emit('send_message', messageData);
+      setMessage('');
+    } else {
+      if (!selectedCommunity) return;
+      const socketRoomKey = `community_${selectedCommunity}`;
+      const messageData = {
+        room: socketRoomKey,
+        sender: user.name || 'Member',
+        text: message.trim(),
+        time: timeString
+      };
+
+      setCommunityPosts((prev) => {
+        const roomMsgs = prev[selectedCommunity] || [];
+        return { ...prev, [selectedCommunity]: [...roomMsgs, messageData] };
+      });
+
+      socket.emit('send_message', messageData);
+      setMessage('');
+    }
   };
 
   const handlePostJob = (e) => {
@@ -152,9 +181,6 @@ const Dashboard = () => {
     localStorage.removeItem('hubvibe_user');
     navigate('/login');
   };
-
-  const activeRoomName = selectedCommunity || chatRoom;
-  const currentMessages = roomMessages[activeRoomName] || [];
 
   return (
     <div style={styles.container}>
@@ -245,12 +271,12 @@ const Dashboard = () => {
               </div>
 
               <div style={styles.chatBox}>
-                {currentMessages.length === 0 ? (
+                {(!communityPosts[selectedCommunity] || communityPosts[selectedCommunity].length === 0) ? (
                   <div style={{ textAlign: 'center', color: '#a7f3d0', opacity: 0.6, marginTop: '40px' }}>
                     No community posts yet in #{selectedCommunity}. Start the discussion below!
                   </div>
                 ) : (
-                  currentMessages.map((post, idx) => (
+                  communityPosts[selectedCommunity].map((post, idx) => (
                     <div key={idx} style={{ marginBottom: '12px', background: 'rgba(2,44,34,0.4)', padding: '10px 14px', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.15)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                         <span style={{ fontWeight: 'bold', color: '#34d399', fontSize: '13px' }}>{post.sender}</span>
@@ -262,7 +288,7 @@ const Dashboard = () => {
                 )}
               </div>
 
-              <form onSubmit={handleSendMessage} style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
+              <form onSubmit={(e) => handleSendMessage(e, false)} style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
                 <input
                   type="text"
                   value={message}
@@ -334,12 +360,12 @@ const Dashboard = () => {
                   </div>
 
                   <div style={styles.chatBox}>
-                    {currentMessages.length === 0 ? (
+                    {(!liveChatMessages[chatRoom] || liveChatMessages[chatRoom].length === 0) ? (
                       <div style={{ textAlign: 'center', color: '#a7f3d0', opacity: 0.6, marginTop: '40px' }}>
                         No live messages in #{chatRoom} yet. Start chatting below!
                       </div>
                     ) : (
-                      currentMessages.map((post, idx) => (
+                      liveChatMessages[chatRoom].map((post, idx) => (
                         <div key={idx} style={{ marginBottom: '12px', background: 'rgba(2,44,34,0.4)', padding: '10px 14px', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.15)' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                             <span style={{ fontWeight: 'bold', color: '#34d399', fontSize: '13px' }}>{post.sender}</span>
@@ -351,7 +377,7 @@ const Dashboard = () => {
                     )}
                   </div>
 
-                  <form onSubmit={handleSendMessage} style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
+                  <form onSubmit={(e) => handleSendMessage(e, true)} style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
                     <input
                       type="text"
                       value={message}
