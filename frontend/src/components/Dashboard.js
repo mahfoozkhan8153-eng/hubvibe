@@ -2,7 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import io from 'socket.io-client';
 
-const socket = io('http://localhost:5000');
+const API_BASE_URL = 'https://hubvibe-backend.onrender.com';
+const socket = io(API_BASE_URL, {
+  transports: ['websocket', 'polling']
+});
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -55,7 +58,6 @@ const Dashboard = () => {
         const roomName = data.room.replace('community_', '');
         setCommunityPosts((prev) => {
           const roomMsgs = prev[roomName] || [];
-          // Khud ke message ko dobara append hone se bachane ke liye check
           const lastMsg = roomMsgs[roomMsgs.length - 1];
           if (lastMsg && lastMsg.text === data.text && lastMsg.sender === data.sender && lastMsg.time === data.time) {
             return prev;
@@ -97,7 +99,6 @@ const Dashboard = () => {
         time: timeString
       };
 
-      // Instant local append taaki turant dikhe
       setLiveChatMessages((prev) => {
         const roomMsgs = prev[chatRoom] || [];
         return { ...prev, [chatRoom]: [...roomMsgs, messageData] };
@@ -115,7 +116,6 @@ const Dashboard = () => {
         time: timeString
       };
 
-      // Instant local append taaki turant dikhe
       setCommunityPosts((prev) => {
         const roomMsgs = prev[selectedCommunity] || [];
         return { ...prev, [selectedCommunity]: [...roomMsgs, messageData] };
@@ -151,7 +151,7 @@ const Dashboard = () => {
 
   const handleSubscribe = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/auth/subscribe', {
+      const response = await fetch(`${API_BASE_URL}/api/auth/subscribe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: user.email })
@@ -707,7 +707,7 @@ const styles = {
     borderRadius: '12px',
     border: '1px solid rgba(16,185,129,0.2)',
   },
-  jobItem: {
+    jobItem: {
     padding: '12px',
     background: 'rgba(6,78,59,0.6)',
     borderRadius: '10px',
