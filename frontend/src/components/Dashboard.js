@@ -18,7 +18,7 @@ const Dashboard = () => {
   const [chatRoom, setChatRoom] = useState('SaaS Developers');
   const [message, setMessage] = useState('');
   
-  // Separated state stores for Community Boards and Live Chat Rooms
+  // SEPARATE STORES: Kept strictly isolated
   const [communityPosts, setCommunityPosts] = useState({});
   const [liveChatMessages, setLiveChatMessages] = useState({});
 
@@ -48,7 +48,7 @@ const Dashboard = () => {
     }
   }, [navigate]);
 
-  // Join respective socket rooms depending on active tab/view
+  // Join dedicated socket rooms
   useEffect(() => {
     if (selectedCommunity) {
       socket.emit('join_room', `community_${selectedCommunity}`);
@@ -58,7 +58,10 @@ const Dashboard = () => {
     }
 
     const handleReceiveMessage = (data) => {
-      if (data.room && data.room.startsWith('community_')) {
+      if (!data || !data.room) return;
+
+      // STRICT FILTERING: Community Board Messages
+      if (data.room.startsWith('community_')) {
         const roomName = data.room.replace('community_', '');
         setCommunityPosts((prev) => {
           const roomMsgs = prev[roomName] || [];
@@ -68,7 +71,9 @@ const Dashboard = () => {
           if (isDuplicate) return prev;
           return { ...prev, [roomName]: [...roomMsgs, data] };
         });
-      } else if (data.room && data.room.startsWith('live_')) {
+      } 
+      // STRICT FILTERING: Live Tribe Chat Messages
+      else if (data.room.startsWith('live_')) {
         const roomName = data.room.replace('live_', '');
         setLiveChatMessages((prev) => {
           const roomMsgs = prev[roomName] || [];
@@ -103,6 +108,7 @@ const Dashboard = () => {
         time: timeString
       };
 
+      // Update ONLY liveChatMessages
       setLiveChatMessages((prev) => {
         const roomMsgs = prev[chatRoom] || [];
         return { ...prev, [chatRoom]: [...roomMsgs, messageData] };
@@ -120,6 +126,7 @@ const Dashboard = () => {
         time: timeString
       };
 
+      // Update ONLY communityPosts
       setCommunityPosts((prev) => {
         const roomMsgs = prev[selectedCommunity] || [];
         return { ...prev, [selectedCommunity]: [...roomMsgs, messageData] };
